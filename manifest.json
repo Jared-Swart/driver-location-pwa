@@ -1,7 +1,7 @@
 {
     "name": "Driver Location Tracker",
     "short_name": "Driver Tracker",
-    "start_url": "/index.html",
+    "start_url": "/driver-location-pwa/index.html",
     "display": "standalone",
     "background_color": "#ffffff",
     "theme_color": "#000000",
