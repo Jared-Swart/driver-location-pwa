@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Location Tracker</title>
+    <link rel="manifest" href="manifest.json">
+    <style>
+        body { font-family: sans-serif; margin: 10px; text-align: center; }
+        button { padding: 10px; margin: 5px; }
+        #status { font-size: 14px; color: #333; }
+    </style>
+</head>
+<body>
+    <h1>Driver Location Tracker</h1>
+    <button id="startBtn">Start</button>
+    <button id="stopBtn" disabled>Stop</button>
+    <p id="status">Not tracking</p>
+    <script>
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const status = document.getElementById('status');
+        let watchId = null;
+        const serverUrl = 'https://script.google.com/macros/s/AKfycbw3CbohN_zLk9DT3RYFVyik95a8RYjpWLb3v02u0Jldc6qcVNEk855frU4FdHN6hC9Dxw/exec'; // Replace with your URL
+        const updateInterval = 30000; // 30 seconds
+
+        // Register Service Worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/service-worker.js')
+                .then(reg => console.log('Service Worker registered', reg))
+                .catch(err => console.error('Service Worker error', err));
+        }
+
+        startBtn.addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                status.textContent = 'Geolocation not supported';
+                return;
+            }
+            status.textContent = 'Requesting permission...';
+            watchId = navigator.geolocation.watchPosition(
+                sendLocation,
+                (err) => status.textContent = `Error: ${err.message}`,
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+        });
+
+        stopBtn.addEventListener('click', () => {
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+                status.textContent = 'Not tracking';
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
+        });
+
+        let lastSent = 0;
+        function sendLocation(position) {
+            const now = Date.now();
+            if (now - lastSent < updateInterval) return;
+
+            const { latitude: lat, longitude: lng } = position.coords;
+            const timestamp = new Date().toISOString();
+            status.textContent = `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`;
+
+            const data = { lat, lng, timestamp };
+            fetch(serverUrl, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+            .then(() => {
+                console.log('Data sent');
+                // Notify Service Worker to cache data
+                if (navigator.serviceWorker.controller) {
+                    navigator.serviceWorker.controller.postMessage({ type: 'LOCATION_UPDATE', data });
+                }
+            })
+            .catch(err => console.error('Send error:', err));
+
+            lastSent = now;
+        }
+
+        // Prompt to install PWA
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            // Show install button (optional)
+            console.log('PWA ready to install');
+        });
+    </script>
+</body>
+</html>
