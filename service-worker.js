@@ -1,24 +1,46 @@
-const CACHE_NAME = 'driver-location-cache';
+const CACHE_NAME = 'driver-location-cache-v1'; // Increment version (e.g., v2) for major updates
 let locationData = null;
 
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
-            return cache.addAll(['/index.html']);
+            return cache.addAll([
+                '/driver-location-pwa/index.html',
+                '/driver-location-pwa/manifest.json'
+            ]);
         })
     );
     self.skipWaiting(); // Activate immediately
 });
 
 self.addEventListener('activate', (event) => {
-    event.waitUntil(self.clients.claim());
+    event.waitUntil(
+        caches.keys().then((cacheNames) => {
+            return Promise.all(
+                cacheNames.filter((name) => name !== CACHE_NAME)
+                    .map((name) => caches.delete(name))
+            );
+        }).then(() => self.clients.claim())
+    );
+});
+
+self.addEventListener('fetch', (event) => {
+    event.respondWith(
+        caches.match(event.request).then((response) => {
+            return response || fetch(event.request).then((fetchResponse) => {
+                return caches.open(CACHE_NAME).then((cache) => {
+                    cache.put(event.request, fetchResponse.clone());
+                    return fetchResponse;
+                });
+            });
+        })
+    );
 });
 
 self.addEventListener('message', (event) => {
     if (event.data.type === 'LOCATION_UPDATE') {
         locationData = event.data.data;
         console.log('Service Worker received location:', locationData);
-        // Attempt to send in background (limited by browser)
         sendLocationInBackground();
     }
 });
@@ -36,7 +58,6 @@ function sendLocationInBackground() {
     }
 }
 
-// Periodic sync (experimental, requires registration)
 self.addEventListener('periodicsync', (event) => {
     if (event.tag === 'location-sync') {
         event.waitUntil(sendLocationInBackground());
